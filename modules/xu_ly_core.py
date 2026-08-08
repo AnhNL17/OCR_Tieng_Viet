@@ -6,13 +6,13 @@ import os
 import platform
 
 # Tự động kiểm tra hệ điều hành
+import platform
+import pytesseract
+
+# Nếu chạy trên Windows thì chỉ định đường dẫn file exe
 if platform.system() == "Windows":
-    # Nếu chạy dưới máy cá nhân Windows thì mới dùng đường dẫn ổ C
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
-else:
-    # Trên Linux / Streamlit Cloud: Không gán đường dẫn cứng, 
-    # hệ thống tự nhận diện Tesseract từ packages.txt
-    pass
+
 def xu_ly_anh_truoc_khi_doc(image_file):
     """
     Hàm tiền xử lý: Đọc ảnh -> Phóng to -> Chuyển đen trắng
