@@ -7,7 +7,7 @@ from PIL import Image
 import pytesseract
 
 # ==========================================
-# 1. CẤU HÌNH ĐƯỜNG DẪN TESSERACT LINH HOẠT
+# 1. CẤU HÌNH ĐƯỜNG DẪN TESSERACT
 # ==========================================
 if platform.system() == "Windows":
     cac_duong_dan_possible = [
@@ -29,11 +29,11 @@ else:
 
 
 # ==========================================
-# 2. HÀM TIỀN XỬ LÝ ẢNH (CHỐNG LỖI UNSUPPORTED IMAGE)
+# 2. HÀM TIỀN XỬ LÝ ẢNH
 # ==========================================
 def xu_ly_anh_truoc_khi_doc(image_input):
     """
-    Tiền xử lý: Ép kiểu dữ liệu về PIL Image chuẩn, phóng to x2 và chuyển sang ảnh xám.
+    Tiền xử lý ảnh: Ép kiểu dữ liệu về PIL Image chuẩn, phóng to x2 và chuyển sang ảnh xám.
     """
     try:
         if isinstance(image_input, Image.Image):
@@ -72,39 +72,39 @@ def xu_ly_anh_truoc_khi_doc(image_input):
 # ==========================================
 def lay_text_tu_anh(image_file, che_do_doc=3):
     """
-    Nhận diện văn bản bằng Tesseract OCR với cơ chế chống văng lỗi.
+    Nhận diện văn bản bằng Tesseract OCR.
     """
     try:
         img_da_xu_ly = xu_ly_anh_truoc_khi_doc(image_file)
 
-        # Xác định đường dẫn tới thư mục chứa model custom (Train/Model)
+        # 1. Xác định đường dẫn thư mục và file model custom
         current_dir = os.path.dirname(os.path.abspath(__file__))
         path_to_model_dir = os.path.abspath(os.path.join(current_dir, '..', 'Train', 'Model'))
         custom_model_file = os.path.join(path_to_model_dir, 'vie_custom_v3.traineddata')
 
-        text = ""
-
-        # Ưu tiên kiểm tra xem file vie_custom_v3.traineddata có tồn tại không
+        # 2. Nếu tìm thấy file vie_custom_v3.traineddata
         if os.path.exists(custom_model_file):
-            custom_config = f'--tessdata-dir "{path_to_model_dir}" --psm {che_do_doc}'
+            # Truyền trực tiếp thư mục chứa model custom vào config
+            config_str = f'--tessdata-dir "{path_to_model_dir}" --psm {che_do_doc}'
             text = pytesseract.image_to_string(
                 img_da_xu_ly, 
                 lang='vie_custom_v3', 
-                config=custom_config
+                config=config_str
             )
         else:
-            # Fallback sang model vie mặc định của hệ thống Linux
-            config_fallback = f'--psm {che_do_doc}'
+            # 3. Nếu KHÔNG tìm thấy file custom, chạy model 'vie' chuẩn của Linux (tải từ packages.txt)
+            # KHÔNG TRUYỀN --tessdata-dir để Tesseract tự tìm trong hệ thống Linux (/usr/share/tesseract-ocr/...)
+            config_str = f'--psm {che_do_doc}'
             text = pytesseract.image_to_string(
                 img_da_xu_ly, 
                 lang='vie', 
-                config=config_fallback
+                config=config_str
             )
 
         return text.strip() if text and text.strip() else "Không tìm thấy nội dung văn bản trong ảnh!"
 
     except Exception as e:
-        # Cơ chế phòng thủ cuối cùng nếu có sự cố đường dẫn
+        # Nếu chạy model custom bị lỗi bất ngờ, dùng model 'vie' hệ thống làm phương án dự phòng an toàn
         try:
             config_fallback = f'--psm {che_do_doc}'
             text = pytesseract.image_to_string(
@@ -112,6 +112,6 @@ def lay_text_tu_anh(image_file, che_do_doc=3):
                 lang='vie', 
                 config=config_fallback
             )
-            return text.strip() if text.strip() else "Không tìm thấy nội dung văn bản!"
+            return text.strip() if text and text.strip() else "Không tìm thấy nội dung văn bản!"
         except Exception as err:
             return f"Lỗi OCR: {str(err)}"
