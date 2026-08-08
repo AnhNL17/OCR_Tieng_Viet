@@ -1,19 +1,43 @@
 import os
 import platform
+import shutil
 import cv2
 import numpy as np
 from PIL import Image
 import pytesseract
 
 # ==========================================
-# 1. CẤU HÌNH ĐƯỜNG DẪN TESSERACT THEO OS
+# 1. CẤU HÌNH ĐƯỜNG DẪN TESSERACT LINH HOẠT
 # ==========================================
 if platform.system() == "Windows":
-    # Đường dẫn cài đặt Tesseract trên máy tính Windows
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    # Danh sách các đường dẫn cài đặt Tesseract phổ biến trên Windows
+    cac_duong_dan_possible = [
+        r'C:\Program Files\Tesseract-OCR\tesseract.exe',
+        r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
+        os.path.expanduser(r'~\AppData\Local\Programs\Tesseract-OCR\tesseract.exe'),
+        os.path.expanduser(r'~\AppData\Local\Tesseract-OCR\tesseract.exe')
+    ]
+    
+    tesseract_found = False
+    for path in cac_duong_dan_possible:
+        if os.path.exists(path):
+            pytesseract.pytesseract.tesseract_cmd = path
+            tesseract_found = True
+            break
+            
+    # Nếu không tìm thấy ở các đường dẫn cố định, tìm trong PATH hệ thống
+    if not tesseract_found:
+        which_tesseract = shutil.which("tesseract")
+        if which_tesseract:
+            pytesseract.pytesseract.tesseract_cmd = which_tesseract
 else:
-    # Trên Linux / Streamlit Cloud: Để mặc định, hệ thống tự nhận diện binary từ packages.txt
-    pass
+    # Trên Linux / Streamlit Cloud: Tự động tìm lệnh 'tesseract' trong hệ thống
+    which_tesseract = shutil.which("tesseract")
+    if which_tesseract:
+        pytesseract.pytesseract.tesseract_cmd = which_tesseract
+    else:
+        # Mặc định đường dẫn chuẩn của tesseract trên Ubuntu/Linux
+        pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 
 # ==========================================
@@ -24,7 +48,12 @@ def xu_ly_anh_truoc_khi_doc(image_file):
     Hàm tiền xử lý: Đọc ảnh -> Phóng to Bicubic -> Chuyển ảnh xám (Grayscale)
     """
     try:
-        img = Image.open(image_file)
+        # Tự động đọc ảnh nếu truyền vào là chuỗi đường dẫn hoặc file uploader
+        if isinstance(image_file, (str, bytes)):
+            img = Image.open(image_file)
+        else:
+            img = image_file
+            
         img = np.array(img)
 
         # Phóng to ảnh gấp 2 lần để tăng độ nét cho OCR
@@ -38,7 +67,7 @@ def xu_ly_anh_truoc_khi_doc(image_file):
 
         return Image.fromarray(img)
     except Exception:
-        # Nếu truyền vào đã là PIL Image hoặc gặp lỗi format
+        # Nếu gặp lỗi format, trả lại ảnh gốc
         return image_file
 
 
