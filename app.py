@@ -20,6 +20,13 @@ except ImportError:
 from modules import xu_ly_core as backend
 
 # ================== CẤU HÌNH POPPLER ==================
+# Nếu chạy trên Streamlit Cloud (Linux), POPPLER_PATH để None để tự nhận diện từ system
+import platform
+
+if platform.system() == "Windows":
+    POPPLER_PATH = r"C:\Users\HP\Downloads\Release-24.08.0-0\poppler-24.08.0\Library\bin"
+else:
+    POPPLER_PATH = None  # On Linux / Streamlit Cloud
 POPPLER_PATH = r"C:\Users\HP\Downloads\Release-24.08.0-0\poppler-24.08.0\Library\bin"
 
 # Tự động tìm poppler trong thư mục dự án
