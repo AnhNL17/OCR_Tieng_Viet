@@ -7,10 +7,10 @@ from PIL import Image
 import pytesseract
 
 # ==========================================
-# 1. CẤU HÌNH ĐƯỜNG DẪN TESSERACT LINH HOẠT
+# 1. CẤU HÌNH ĐƯỜNG DẪN TESSERACT THEO OS
 # ==========================================
 if platform.system() == "Windows":
-    # Danh sách các đường dẫn cài đặt Tesseract phổ biến trên Windows
+    # Các đường dẫn cài đặt Tesseract phổ biến trên Windows
     cac_duong_dan_possible = [
         r'C:\Program Files\Tesseract-OCR\tesseract.exe',
         r'C:\Program Files (x86)\Tesseract-OCR\tesseract.exe',
@@ -25,50 +25,71 @@ if platform.system() == "Windows":
             tesseract_found = True
             break
             
-    # Nếu không tìm thấy ở các đường dẫn cố định, tìm trong PATH hệ thống
     if not tesseract_found:
         which_tesseract = shutil.which("tesseract")
         if which_tesseract:
             pytesseract.pytesseract.tesseract_cmd = which_tesseract
 else:
-    # Trên Linux / Streamlit Cloud: Tự động tìm lệnh 'tesseract' trong hệ thống
+    # Trên Linux / Streamlit Cloud: Tự động tìm binary tesseract hệ thống
     which_tesseract = shutil.which("tesseract")
     if which_tesseract:
         pytesseract.pytesseract.tesseract_cmd = which_tesseract
     else:
-        # Mặc định đường dẫn chuẩn của tesseract trên Ubuntu/Linux
         pytesseract.pytesseract.tesseract_cmd = '/usr/bin/tesseract'
 
 
 # ==========================================
-# 2. HÀM TIỀN XỬ LÝ ẢNH
+# 2. HÀM TIỀN XỬ LÝ ẢNH (CHỐNG LỖI UNSUPPORTED IMAGE)
 # ==========================================
-def xu_ly_anh_truoc_khi_doc(image_file):
+def xu_ly_anh_truoc_khi_doc(image_input):
     """
-    Hàm tiền xử lý: Đọc ảnh -> Phóng to Bicubic -> Chuyển ảnh xám (Grayscale)
+    Tiền xử lý ảnh: Chuẩn hóa mọi định dạng về PIL Image,
+    phóng to Bicubic x2 và chuyển sang ảnh xám.
     """
     try:
-        # Tự động đọc ảnh nếu truyền vào là chuỗi đường dẫn hoặc file uploader
-        if isinstance(image_file, (str, bytes)):
-            img = Image.open(image_file)
+        # A. Ép kiểu dữ liệu đầu vào về PIL Image
+        if isinstance(image_input, Image.Image):
+            img_pil = image_input
+        elif hasattr(image_input, 'read'):  # UploadedFile từ Streamlit hoặc BytesIO
+            image_input.seek(0)
+            img_pil = Image.open(image_input)
+        elif isinstance(image_input, np.ndarray):
+            img_pil = Image.fromarray(image_input)
         else:
-            img = image_file
-            
-        img = np.array(img)
+            img_pil = Image.open(image_input)
 
-        # Phóng to ảnh gấp 2 lần để tăng độ nét cho OCR
-        img = cv2.resize(img, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+        # Chuyển đổi mode ảnh bất thường về RGB hoặc L
+        if img_pil.mode not in ('RGB', 'L'):
+            img_pil = img_pil.convert('RGB')
 
-        # Chuyển ảnh về dạng xám nếu là ảnh màu
-        if len(img.shape) == 3 and img.shape[2] == 3:
-            img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        elif len(img.shape) == 3 and img.shape[2] == 4:
-            img = cv2.cvtColor(img, cv2.COLOR_BGRA2GRAY)
+        # B. Chuyển sang NumPy array để tiền xử lý bằng OpenCV
+        img_np = np.array(img_pil)
 
-        return Image.fromarray(img)
+        # C. Phóng to ảnh gấp 2 lần (Bicubic) tăng nét
+        img_resized = cv2.resize(img_np, None, fx=2, fy=2, interpolation=cv2.INTER_CUBIC)
+
+        # D. Chuyển sang ảnh xám (Grayscale)
+        if len(img_resized.shape) == 3:
+            if img_resized.shape[2] == 3:
+                img_gray = cv2.cvtColor(img_resized, cv2.COLOR_RGB2GRAY)
+            elif img_resized.shape[2] == 4:
+                img_gray = cv2.cvtColor(img_resized, cv2.COLOR_RGBA2GRAY)
+            else:
+                img_gray = img_resized
+        else:
+            img_gray = img_resized
+
+        # E. Trả về PIL Image chuẩn cho pytesseract
+        return Image.fromarray(img_gray)
+
     except Exception:
-        # Nếu gặp lỗi format, trả lại ảnh gốc
-        return image_file
+        # Nếu gặp lỗi xử lý, cố gắng trả lại ảnh PIL nguyên bản
+        try:
+            if hasattr(image_input, 'seek'):
+                image_input.seek(0)
+            return Image.open(image_input)
+        except Exception:
+            return image_input
 
 
 # ==========================================
@@ -76,22 +97,20 @@ def xu_ly_anh_truoc_khi_doc(image_file):
 # ==========================================
 def lay_text_tu_anh(image_file, che_do_doc=3):
     """
-    Hàm thực hiện OCR trích xuất văn bản từ ảnh/PDF
+    Thực hiện trích xuất văn bản từ ảnh/PDF bằng Tesseract OCR.
     """
     try:
-        # 1. Tiền xử lý ảnh
+        # 1. Tiền xử lý ảnh an toàn
         img_da_xu_ly = xu_ly_anh_truoc_khi_doc(image_file)
 
-        # 2. Xác định đường dẫn thư mục chứa model traineddata
+        # 2. Đường dẫn đến thư mục chứa model custom (Train/Model)
         current_dir = os.path.dirname(os.path.abspath(__file__))
         path_to_model = os.path.abspath(os.path.join(current_dir, '..', 'Train', 'Model'))
 
-        # Chuẩn bị chuỗi config
         custom_config = f'--tessdata-dir "{path_to_model}" --psm {che_do_doc}'
-        
         text = ""
 
-        # 3. Thử nhận dạng bằng Model Custom (vie_custom_v3)
+        # 3. Thử chạy với Model Custom vie_custom_v3
         try:
             text = pytesseract.image_to_string(
                 img_da_xu_ly, 
@@ -99,8 +118,7 @@ def lay_text_tu_anh(image_file, che_do_doc=3):
                 config=custom_config
             )
         except Exception:
-            # 4. FALLBACK: Nếu không tìm thấy vie_custom_v3 hoặc lỗi tessdata-dir, 
-            # tự động chuyển sang dùng model 'vie' mặc định của hệ thống
+            # 4. Dự phòng: Nếu thiếu file model custom, dùng model 'vie' mặc định hệ thống
             config_fallback = f'--psm {che_do_doc}'
             text = pytesseract.image_to_string(
                 img_da_xu_ly, 
@@ -108,7 +126,7 @@ def lay_text_tu_anh(image_file, che_do_doc=3):
                 config=config_fallback
             )
 
-        # 5. Kiểm tra kết quả trả về
+        # 5. Kiểm tra và trả về kết quả
         if text and text.strip():
             return text.strip()
         else:
