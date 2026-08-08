@@ -71,25 +71,36 @@ def lay_text_tu_anh(image_file, che_do_doc=3):
     try:
         img_da_xu_ly = xu_ly_anh_truoc_khi_doc(image_file)
 
-        # Lấy trực tiếp thư mục gốc (nơi chứa app.py và file vie.traineddata)
+        # Đường dẫn thư mục gốc và thư mục Train/Model
         current_dir = os.path.dirname(os.path.abspath(__file__))
         root_dir = os.path.abspath(os.path.join(current_dir, '..'))
+        model_dir = os.path.join(root_dir, 'Train', 'Model')
 
-        # Trỏ tessdata-dir trực tiếp về thư mục gốc
-        custom_config = f'--tessdata-dir "{root_dir}" --psm {che_do_doc}'
+        # ƯU TIÊN 1: Thử dùng model custom vie_custom_v3 trong thư mục Train/Model
+        if os.path.exists(os.path.join(model_dir, 'vie_custom_v3.traineddata')):
+            config_custom = f'--tessdata-dir "{model_dir}" --psm {che_do_doc}'
+            try:
+                text = pytesseract.image_to_string(img_da_xu_ly, lang='vie_custom_v3', config=config_custom)
+                if text and text.strip():
+                    return text.strip()
+            except Exception:
+                pass
 
-        # Thử nhận dạng bằng model custom v3 (nếu có ở root) hoặc model vie gốc ở root
-        try:
-            text = pytesseract.image_to_string(img_da_xu_ly, lang='vie_custom_v3', config=custom_config)
-        except Exception:
-            text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=custom_config)
+        # ƯU TIÊN 2: Dùng file vie.traineddata ở ngay thư mục gốc (Root)
+        if os.path.exists(os.path.join(root_dir, 'vie.traineddata')):
+            config_root = f'--tessdata-dir "{root_dir}" --psm {che_do_doc}'
+            try:
+                text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=config_root)
+                if text and text.strip():
+                    return text.strip()
+            except Exception:
+                pass
 
+        # ƯU TIÊN 3: Dùng model vie mặc định hệ thống Linux (không truyền tessdata-dir)
+        config_system = f'--psm {che_do_doc}'
+        text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=config_system)
+        
         return text.strip() if text and text.strip() else "Không tìm thấy nội dung văn bản trong ảnh!"
 
     except Exception as e:
-        # Dự phòng cuối cùng: dùng 'vie' mặc định hệ thống
-        try:
-            text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=f'--psm {che_do_doc}')
-            return text.strip() if text and text.strip() else "Không tìm thấy nội dung văn bản!"
-        except Exception as err:
-            return f"Lỗi OCR: {str(err)}"
+        return f"Lỗi OCR: {str(e)}"
