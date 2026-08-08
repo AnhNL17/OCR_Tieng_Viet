@@ -29,9 +29,12 @@ else:
 
 
 # ==========================================
-# 2. HÀM TIỀN XỬ LÝ ẢNH
+# 2. HÀM TIỀN XỬ LÝ ẢNH (CHỐNG LỖI UNSUPPORTED IMAGE)
 # ==========================================
 def xu_ly_anh_truoc_khi_doc(image_input):
+    """
+    Tiền xử lý: Ép kiểu dữ liệu về PIL Image chuẩn, phóng to x2 và chuyển sang ảnh xám.
+    """
     try:
         if isinstance(image_input, Image.Image):
             img_pil = image_input
@@ -68,35 +71,47 @@ def xu_ly_anh_truoc_khi_doc(image_input):
 # 3. HÀM CHÍNH: NHẬN DẠNG VĂN BẢN (OCR)
 # ==========================================
 def lay_text_tu_anh(image_file, che_do_doc=3):
+    """
+    Nhận diện văn bản bằng Tesseract OCR với cơ chế quét nhiều thư mục tìm file .traineddata.
+    """
     try:
         img_da_xu_ly = xu_ly_anh_truoc_khi_doc(image_file)
 
-        # Đường dẫn thư mục gốc và thư mục Train/Model
         current_dir = os.path.dirname(os.path.abspath(__file__))
         root_dir = os.path.abspath(os.path.join(current_dir, '..'))
-        model_dir = os.path.join(root_dir, 'Train', 'Model')
+        
+        # Danh sách các đường dẫn chứa model theo thứ tự ưu tiên
+        model_paths = [
+            os.path.join(root_dir, 'Train', 'Model'),
+            os.path.join(root_dir, 'Train/Model'),
+            root_dir
+        ]
 
-        # ƯU TIÊN 1: Thử dùng model custom vie_custom_v3 trong thư mục Train/Model
-        if os.path.exists(os.path.join(model_dir, 'vie_custom_v3.traineddata')):
-            config_custom = f'--tessdata-dir "{model_dir}" --psm {che_do_doc}'
-            try:
-                text = pytesseract.image_to_string(img_da_xu_ly, lang='vie_custom_v3', config=config_custom)
-                if text and text.strip():
-                    return text.strip()
-            except Exception:
-                pass
+        # 1. Thử tìm và chạy file vie_custom_v3.traineddata
+        for folder in model_paths:
+            custom_file = os.path.join(folder, 'vie_custom_v3.traineddata')
+            if os.path.exists(custom_file):
+                try:
+                    config_custom = f'--tessdata-dir "{folder}" --psm {che_do_doc}'
+                    text = pytesseract.image_to_string(img_da_xu_ly, lang='vie_custom_v3', config=config_custom)
+                    if text and text.strip():
+                        return text.strip()
+                except Exception:
+                    pass
 
-        # ƯU TIÊN 2: Dùng file vie.traineddata ở ngay thư mục gốc (Root)
-        if os.path.exists(os.path.join(root_dir, 'vie.traineddata')):
-            config_root = f'--tessdata-dir "{root_dir}" --psm {che_do_doc}'
-            try:
-                text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=config_root)
-                if text and text.strip():
-                    return text.strip()
-            except Exception:
-                pass
+        # 2. Thử tìm và chạy file vie.traineddata (nếu có ở root hoặc Train/Model)
+        for folder in model_paths:
+            vie_file = os.path.join(folder, 'vie.traineddata')
+            if os.path.exists(vie_file):
+                try:
+                    config_vie = f'--tessdata-dir "{folder}" --psm {che_do_doc}'
+                    text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=config_vie)
+                    if text and text.strip():
+                        return text.strip()
+                except Exception:
+                    pass
 
-        # ƯU TIÊN 3: Dùng model vie mặc định hệ thống Linux (không truyền tessdata-dir)
+        # 3. Phương án bảo vệ cuối cùng: Chạy bằng 'vie' mặc định hệ thống Linux (không truyền tessdata-dir)
         config_system = f'--psm {che_do_doc}'
         text = pytesseract.image_to_string(img_da_xu_ly, lang='vie', config=config_system)
         
